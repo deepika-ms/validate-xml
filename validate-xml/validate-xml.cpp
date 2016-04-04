@@ -368,6 +368,5 @@ int main(int argc, const char** argv)
 	
 	XSECPlatformUtils::Terminate();
     XMLPlatformUtils::Terminate();
-
     return valid;
 }
