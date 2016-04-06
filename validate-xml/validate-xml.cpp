@@ -101,6 +101,48 @@ bool Xerces::EntityFileResolver::IsEmpty() const
 {
     return _impl->EntityFileInfos.empty();
 }
+InputSource* EntityFileResolver::resolveEntity(const XMLCh* const publicId,
+                                               const XMLCh* const systemId)
+{
+    QUBE_MARK_PARAM_UNUSED(publicId);
+
+    if (systemId == NULL)
+    {
+        throw NULL;
+    }
+
+    XercesMbStr systemPath(systemId);
+
+    // skips the path and gets the file name
+    const char* fileName = strrchr(systemPath.get(), '/');
+    fileName = (fileName == NULL) ? systemPath.get() : fileName + 1;
+
+    auto it = _impl->EntityFileInfos.find(string(fileName));
+    if (it != _impl->EntityFileInfos.end())
+    {
+        if (it->second.ContentLength == 0)
+        {
+            return new LocalFileInputSource(QUBE_XERCES_MB2W(it->second.Path.c_str()));
+        }
+        else
+        {
+            return new MemBufInputSource(reinterpret_cast<const XMLByte*>(it->second.Content),
+                                         it->second.ContentLength, systemId);
+        }
+    }
+
+    try
+    {
+        string filePath(FmtStr("%s/%s", _impl->DefaultSearchDirectory.c_str(), fileName));
+        return new LocalFileInputSource(QUBE_XERCES_MB2W(filePath.c_str()));
+    }
+    catch (const XMLException&)
+    {
+        // ignores exception in opening the file(e.g. file doesn't exist)
+    }
+
+    return NULL;
+}
 
 
 
@@ -224,6 +266,15 @@ int IsSigValid(DOMDocument *theDOM, DOMNode *sigNode)
 	
 }
 	
+const string XML_SCHEMA_NAME="xml.xsd";
+const string SMPTE_CPL_SCHEMA_NAME="smptecpl.xsd";
+const string XML_DSIG_SCHEMA_NAME="xmldsig.xsd";
+const string SMPTE_CPL_STEREO_SCHEMA_NAME="smptecpl.xsd";
+const string INTEROP_CPL_STEREO_SCHEMA_NAME="interopcplstereo.xsd";
+const string INTEROP_CPL_CC_SCHEMA_NAME="interopcplcc.xsd";
+const string SMPTE_TIMED_TEXT_SCHEMA_NAME="smptett.xsd";
+const string CPL_DOLBY_ATMOS_AUX_DATA_SCHEMA_NAME="cpldolby.xsd";
+const string INTEROP_CPL_SCHEMA_NAME="interopcpl.xsd";
 
 int main(int argc, const char** argv)
 {
@@ -266,40 +317,46 @@ int main(int argc, const char** argv)
 
     if (entityFileResolver.IsEmpty())
     {
-        entityFileResolver.AddFileContent("INTEROP_CPL_SCHEMA_NAME",
+        entityFileResolver.AddFileContent(INTEROP_CPL_SCHEMA_NAME,
                                           PROTO_ASDCP_CPL_20040511_XSD,
                                           PROTO_ASDCP_CPL_20040511_XSD_SIZE);
+		
+        entityFileResolver.AddFileContent(XML_SCHEMA_NAME, XML_XSD, XML_XSD_SIZE);
 
-        entityFileResolver.AddFileContent("XML_SCHEMA_NAME", XML_XSD, XML_XSD_SIZE);
-
-        entityFileResolver.AddFileContent("SMPTE_CPL_SCHEMA_NAME", CPL_429_7_2006_XSD,
+        entityFileResolver.AddFileContent(SMPTE_CPL_SCHEMA_NAME, CPL_429_7_2006_XSD,
                                           CPL_429_7_2006_XSD_SIZE);
 
-        entityFileResolver.AddFileContent("XML_DSIG_SCHEMA_NAME", XMLDSIG_CORE_SCHEMA_XSD,
+        entityFileResolver.AddFileContent(XML_DSIG_SCHEMA_NAME, XMLDSIG_CORE_SCHEMA_XSD,
                                           XMLDSIG_CORE_SCHEMA_XSD_SIZE);
 
-        entityFileResolver.AddFileContent("SMPTE_CPL_STEREO_SCHEMA_NAME",
+        entityFileResolver.AddFileContent(SMPTE_CPL_STEREO_SCHEMA_NAME,
                                           MAIN_STEREO_PICTURE_CPL_429_10_2008_XSD,
                                           MAIN_STEREO_PICTURE_CPL_429_10_2008_XSD_SIZE);
 
-        entityFileResolver.AddFileContent("INTEROP_CPL_STEREO_SCHEMA_NAME",
+        entityFileResolver.AddFileContent(INTEROP_CPL_STEREO_SCHEMA_NAME,
                                           MAIN_STEREO_PICTURE_CPL_XSD,
                                           MAIN_STEREO_PICTURE_CPL_XSD_SIZE);
 
-        entityFileResolver.AddFileContent("INTEROP_CPL_CC_SCHEMA_NAME",
+        entityFileResolver.AddFileContent(INTEROP_CPL_CC_SCHEMA_NAME,
                                           PROTO_ASDCP_CC_CPL_20070926_XSD,
                                           PROTO_ASDCP_CC_CPL_20070926_XSD_SIZE);
 
-        entityFileResolver.AddFileContent("SMPTE_TIMED_TEXT_SCHEMA_NAME", TT_429_12_2008_XSD,
+        entityFileResolver.AddFileContent(SMPTE_TIMED_TEXT_SCHEMA_NAME, TT_429_12_2008_XSD,
                                           TT_429_12_2008_XSD_SIZE);
 
-        entityFileResolver.AddFileContent("CPL_DOLBY_ATMOS_AUX_DATA_SCHEMA_NAME",
+        entityFileResolver.AddFileContent(CPL_DOLBY_ATMOS_AUX_DATA_SCHEMA_NAME,
                                           DOLBY_AD_2012_XSD,
                                           DOLBY_AD_2012_XSD_SIZE);
     }
-
+	
     parser->setEntityResolver(&entityFileResolver);
-
+	parser->setExternalSchemaLocation(
+		  INTEROP_CPL_NAMESPACE_URI
+        " INTEROP_CPL_SCHEMA_NAME " SMPTE_CPL_NAMESPACE_URI " SMPTE_CPL_SCHEMA_NAME"
+		SMPTE_CPL_STEREO_NAMESPACE_URI  " SMPTE_CPL_STEREO_SCHEMA_NAME " INTEROP_CPL_STEREO_NAMESPACE_URI
+        " INTEROP_CPL_STEREO_SCHEMA_NAME " INTEROP_CPL_CC_NAMESPACE_URI " INTEROP_CPL_CC_SCHEMA_NAME"
+        CPL_DOLBY_ATMOS_AUX_DATA_NAMESPACE_URI " CPL_DOLBY_ATMOS_AUX_DATA_SCHEMA_NAME"
+         SMPTE_TIMED_TEXT_NAMESPACE_URI " SMPTE_TIMED_TEXT_SCHEMA_NAME");
     try
     {
         parser->parse(argv[1]);
